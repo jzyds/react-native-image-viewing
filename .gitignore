@@ -2,3 +2,5 @@ node_modules/
 dist/
 .expo
 .vscode
+
+package-lock.json
