@@ -7,7 +7,7 @@
     "esModuleInterop": true,
     "moduleResolution": "node",
     "declaration": true,
-    "outDir": "dist/",
+    "outDir": "../../../Projects/feed/feed_hybrid/local_modules/react-native-image-viewings",
     "types": ["react", "react-native"],
     "skipLibCheck": true
   },

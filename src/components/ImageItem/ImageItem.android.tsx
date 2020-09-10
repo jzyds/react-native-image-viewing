@@ -16,12 +16,15 @@ import {
   NativeSyntheticEvent,
 } from "react-native";
 
+
 import useImageDimensions from "../../hooks/useImageDimensions";
 import usePanResponder from "../../hooks/usePanResponder";
 
 import { getImageStyles, getImageTransform } from "../../utils";
 import { ImageSource } from "../../@types";
 import { ImageLoading } from "./ImageLoading";
+
+import FastImage from 'react-native-fast-image';
 
 const SWIPE_CLOSE_OFFSET = 75;
 const SWIPE_CLOSE_VELOCITY = 1.75;
@@ -48,9 +51,30 @@ const ImageItem = ({
   swipeToCloseEnabled = true,
   doubleTapToZoomEnabled = true,
 }: Props) => {
+
+  let { height, width }: any = imageSrc;
+  const heightOverScreen = (!!height && !!width) && (
+    (height / width) > (SCREEN_HEIGHT / SCREEN_WIDTH)
+  )
+  let imageDimensions;
+
+  if (heightOverScreen) {
+    imageDimensions = {
+      width: SCREEN_WIDTH,
+      height: SCREEN_WIDTH * (height / width)
+    };
+  } else {
+    imageDimensions = useImageDimensions(imageSrc);
+  }
+
   const imageContainer = React.createRef<any>();
-  const imageDimensions = useImageDimensions(imageSrc);
-  const [translate, scale] = getImageTransform(imageDimensions, SCREEN);
+
+  let [translate, scale] = getImageTransform(imageDimensions, SCREEN);
+  if (heightOverScreen) {
+    scale = 1
+    translate = { x: 0, y: 0 }
+  }
+
   const scrollValueY = new Animated.Value(0);
   const [isLoaded, setLoadEnd] = useState(false);
 
@@ -76,6 +100,7 @@ const ImageItem = ({
     doubleTapToZoomEnabled,
     onLongPress: onLongPressHandler,
     delayLongPress,
+    onSinglePress: onRequestClose
   });
 
   const imagesStyles = getImageStyles(
@@ -100,7 +125,7 @@ const ImageItem = ({
         offsetY > SWIPE_CLOSE_OFFSET) ||
       offsetY > SCREEN_HEIGHT / 2
     ) {
-      onRequestClose();
+      !heightOverScreen && onRequestClose();
     }
   };
 
@@ -112,27 +137,58 @@ const ImageItem = ({
     scrollValueY.setValue(offsetY);
   };
 
+  let AnimatedImge;
+
+  if (heightOverScreen) {
+    // 高宽比超过屏幕
+    imageStylesWithOpacity.width = SCREEN_WIDTH
+    imageStylesWithOpacity.height = SCREEN_WIDTH * (height / width)
+    console.log(imageStylesWithOpacity)
+
+    let { uri }: any = imageSrc;
+    AnimatedImge =
+      <Animated.View
+        {...panHandlers}
+        style={imageStylesWithOpacity}
+      >
+        <FastImage
+          source={{
+            uri: uri,
+            priority: "high"
+          }}
+          style={{
+            width: SCREEN_WIDTH,
+            height: SCREEN_WIDTH * (height / width)
+          }}
+          onLoad={onLoaded}
+        />
+      </Animated.View>
+
+  } else {
+    AnimatedImge = <Animated.Image
+      {...panHandlers}
+      source={imageSrc}
+      style={imageStylesWithOpacity}
+      onLoad={onLoaded}
+    />
+  }
+
   return (
     <Animated.ScrollView
       ref={imageContainer}
       style={styles.listItem}
-      pagingEnabled
+      pagingEnabled={false}
       nestedScrollEnabled
       showsHorizontalScrollIndicator={false}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.imageScrollContainer}
+      contentContainerStyle={heightOverScreen ? {} : styles.imageScrollContainer}
       scrollEnabled={swipeToCloseEnabled}
-      {...(swipeToCloseEnabled && {
+      {...(swipeToCloseEnabled && !heightOverScreen && {
         onScroll,
         onScrollEndDrag,
       })}
     >
-      <Animated.Image
-        {...panHandlers}
-        source={imageSrc}
-        style={imageStylesWithOpacity}
-        onLoad={onLoaded}
-      />
+      {AnimatedImge}
       {(!isLoaded || !imageDimensions) && <ImageLoading />}
     </Animated.ScrollView>
   );
@@ -141,10 +197,10 @@ const ImageItem = ({
 const styles = StyleSheet.create({
   listItem: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    height: "100%",
   },
   imageScrollContainer: {
-    height: SCREEN_HEIGHT * 2,
+    height: "100%",
   },
 });
 

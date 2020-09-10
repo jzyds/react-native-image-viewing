@@ -30,8 +30,11 @@ const SCREEN_HEIGHT = SCREEN.height;
 const MIN_DIMENSION = Math.min(SCREEN_WIDTH, SCREEN_HEIGHT);
 
 const SCALE_MAX = 2;
-const DOUBLE_TAP_DELAY = 300;
+const DOUBLE_TAP_DELAY = 220;
 const OUT_BOUND_MULTIPLIER = 0.75;
+
+let firstPress = true;
+let timer: any = false;
 
 type Props = {
   initialScale: number;
@@ -39,6 +42,7 @@ type Props = {
   onZoom: (isZoomed: boolean) => void;
   doubleTapToZoomEnabled: boolean;
   onLongPress: () => void;
+  onSinglePress: () => void;
   delayLongPress: number;
 };
 
@@ -48,10 +52,12 @@ const usePanResponder = ({
   onZoom,
   doubleTapToZoomEnabled,
   onLongPress,
+  onSinglePress,
   delayLongPress,
 }: Props): Readonly<
   [GestureResponderHandlers, Animated.Value, Animated.ValueXY]
 > => {
+
   let numberInitialTouches = 1;
   let initialTouches: NativeTouchEvent[] = [];
   let currentScale = initialScale;
@@ -124,6 +130,12 @@ const usePanResponder = ({
     longPressHandlerRef && clearTimeout(longPressHandlerRef);
   };
 
+  const cancleSinglePressHandle = () => {
+    timer && clearTimeout(timer);
+    timer = false
+    firstPress = true;
+  }
+
   const handlers = {
     onGrant: (
       _: GestureResponderEvent,
@@ -147,18 +159,43 @@ const usePanResponder = ({
       const tapTS = Date.now();
       // Handle double tap event by calculating diff between first and second taps timestamps
 
-      isDoubleTapPerformed = Boolean(
-        lastTapTS && tapTS - lastTapTS < DOUBLE_TAP_DELAY
-      );
+      if (firstPress) {
+        // set the flag indicating first press has occured
+        firstPress = false;
 
-      if (doubleTapToZoomEnabled && isDoubleTapPerformed) {
-        const isScaled = currentTranslate.x !== initialTranslate.x; // currentScale !== initialScale;
-        const { pageX: touchX, pageY: touchY } = event.nativeEvent.touches[0];
-        const targetScale = SCALE_MAX;
-        const nextScale = isScaled ? initialScale : targetScale;
-        const nextTranslate = isScaled
-          ? initialTranslate
-          : getTranslateInBounds(
+        console.log("touchstart")
+
+        //start a timer --> if a second tap doesnt come in by the delay, trigger singleTap event handler
+        timer = setTimeout(() => {
+          //check if user passed in prop
+
+          onSinglePress()
+
+          // reset back to initial state
+          cancleSinglePressHandle()
+        }, DOUBLE_TAP_DELAY);
+
+        // mark the last time of the press
+        lastTapTS = tapTS;
+      } else {
+        isDoubleTapPerformed = Boolean(
+          lastTapTS && 
+          tapTS - lastTapTS < DOUBLE_TAP_DELAY
+        );
+
+        if (doubleTapToZoomEnabled && isDoubleTapPerformed) {
+          timer && clearTimeout(timer);
+
+          const isScaled = currentTranslate.x !== initialTranslate.x; // currentScale !== initialScale;
+          const { pageX: touchX, pageY: touchY } = event.nativeEvent.touches[0];
+          const targetScale = SCALE_MAX;
+          const nextScale = isScaled ? initialScale : targetScale;
+
+          console.log(nextScale);
+
+          const nextTranslate = isScaled
+            ? initialTranslate
+            : getTranslateInBounds(
               {
                 x:
                   initialTranslate.x +
@@ -170,35 +207,35 @@ const usePanResponder = ({
               targetScale
             );
 
-        onZoom(!isScaled);
+          onZoom(!isScaled);
 
-        Animated.parallel(
-          [
-            Animated.timing(translateValue.x, {
-              toValue: nextTranslate.x,
-              duration: 300,
-              useNativeDriver: true,
-            }),
-            Animated.timing(translateValue.y, {
-              toValue: nextTranslate.y,
-              duration: 300,
-              useNativeDriver: true,
-            }),
-            Animated.timing(scaleValue, {
-              toValue: nextScale,
-              duration: 300,
-              useNativeDriver: true,
-            }),
-          ],
-          { stopTogether: false }
-        ).start(() => {
-          currentScale = nextScale;
-          currentTranslate = nextTranslate;
-        });
+          Animated.parallel(
+            [
+              Animated.timing(translateValue.x, {
+                toValue: nextTranslate.x,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.timing(translateValue.y, {
+                toValue: nextTranslate.y,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.timing(scaleValue, {
+                toValue: nextScale,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+            ],
+            { stopTogether: false }
+          ).start(() => {
+            currentScale = nextScale;
+            currentTranslate = nextTranslate;
+          });
 
-        lastTapTS = null;
-      } else {
-        lastTapTS = Date.now();
+          // lastTapTS = null;
+          firstPress = true;
+        } 
       }
     },
     onMove: (
@@ -209,6 +246,7 @@ const usePanResponder = ({
 
       if (Math.abs(dx) >= meaningfulShift || Math.abs(dy) >= meaningfulShift) {
         cancelLongPressHandle();
+        cancleSinglePressHandle();
       }
 
       // Don't need to handle move because double tap in progress (was handled in onStart)
@@ -232,6 +270,7 @@ const usePanResponder = ({
 
       if (isPinchGesture) {
         cancelLongPressHandle();
+      
 
         const initialDistance = getDistanceBetweenTouches(initialTouches);
         const currentDistance = getDistanceBetweenTouches(
@@ -259,13 +298,13 @@ const usePanResponder = ({
             nextScale < initialScale
               ? initialTranslate.x
               : currentTranslate.x -
-                (currentTranslate.x - initialTranslate.x) / k;
+              (currentTranslate.x - initialTranslate.x) / k;
 
           const nextTranslateY =
             nextScale < initialScale
               ? initialTranslate.y
               : currentTranslate.y -
-                (currentTranslate.y - initialTranslate.y) / k;
+              (currentTranslate.y - initialTranslate.y) / k;
 
           translateValue.x.setValue(nextTranslateX);
           translateValue.y.setValue(nextTranslateY);
